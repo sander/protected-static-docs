@@ -13,5 +13,6 @@ libraryDependencies ++= Seq(
   "org.http4s" % "http4s-dsl_3" % http4sVersion,
   "org.http4s" % "http4s-blaze-server_3" % http4sVersion,
   "org.http4s" % "http4s-blaze-client_3" % http4sVersion,
-  "ch.qos.logback" % "logback-classic" % "1.2.10"
+  "ch.qos.logback" % "logback-classic" % "1.2.10",
+  "org.typelevel" %% "munit-cats-effect-3" % "1.0.6" % Test,
 )

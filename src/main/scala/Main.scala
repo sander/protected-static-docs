@@ -9,9 +9,12 @@ import org.http4s.server.Router
 import scala.concurrent.ExecutionContext.global
 
 object Main extends IOApp.Simple:
-  val helloWorldService = HttpRoutes.of[IO] {
-    case GET -> Root => Ok(s"Hello, world!")
+  val port = 8080
+  private val helloWorldService = HttpRoutes.of[IO] { case GET -> Root =>
+    Ok(s"Hello, world!")
   }
-  val httpApp = Router("/" -> helloWorldService).orNotFound
-  val server = BlazeServerBuilder[IO](global).bindHttp(8080, "localhost").withHttpApp(httpApp)
+  private val httpApp = Router("/" -> helloWorldService).orNotFound
+  private val server = BlazeServerBuilder[IO](global)
+    .bindHttp(port, "localhost")
+    .withHttpApp(httpApp)
   val run = server.serve.compile.drain
