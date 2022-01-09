@@ -17,7 +17,7 @@ import software.amazon.awssdk.services.s3.model.{
 
 object ObjectRepository:
 
-  val chunkSize = 4096
+  private val chunkSize = 4096
 
   case class GetResponse(properties: GetObjectResponse, body: Stream[IO, Byte])
 
@@ -28,16 +28,11 @@ object ObjectRepository:
       r.response(),
       fs2.io.readInputStream(IO.pure(r), chunkSize, true)
     )
-    def errorHandler(e: Throwable) = e match {
-      case e: S3Exception => IO.pure(e)
-      case e              => IO.raiseError(e)
-    }
-    for client <- IO(S3Client.builder().region(region).build())
+    def get(client: S3Client, request: GetObjectRequest) =
+      IO(Either.catchOnly[S3Exception](client.getObject(request)))
+    for c <- IO(S3Client.builder().region(region).build())
     yield (
-      (request) =>
-        IO(client.getObject(request))
-          .map(r => Right(response(r)))
-          .handleErrorWith(e => errorHandler(e).map(Left.apply)),
-      IO(client.close())
+      (r) => EitherT(get(c, r)).map(response).value,
+      IO(c.close())
     )
   }
