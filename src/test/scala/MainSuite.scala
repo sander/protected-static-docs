@@ -42,9 +42,9 @@ class MainSuite extends CatsEffectSuite {
       .key("index.html")
       .build()
 
-    ObjectRepository.resource(Region.EU_CENTRAL_1).use { c =>
+    ObjectRepository.resource(Region.EU_CENTRAL_1).use { getObject =>
       for
-        r <- EitherT(c.getObject(request)).valueOrF(IO.raiseError)
+        r <- EitherT(getObject(request)).valueOrF(IO.raiseError)
         b <- r.body.compile.to(Array)
         s <- IO(new String(b, StandardCharsets.UTF_8))
       yield

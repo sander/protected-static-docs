@@ -2,7 +2,10 @@ package nl.sanderdijkhuis.docs
 
 import cats.effect.IO
 import cats.effect.kernel.Resource
+import cats.data.EitherT
+import cats.implicits._
 import fs2.Stream
+import software.amazon.awssdk.core.ResponseInputStream
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3
 import software.amazon.awssdk.services.s3.S3Client
@@ -12,37 +15,29 @@ import software.amazon.awssdk.services.s3.model.{
   S3Exception
 }
 
-trait ObjectRepository:
-
-  def getObject(
-      request: GetObjectRequest
-  ): IO[Either[S3Exception, ObjectRepository.GetResponse]]
-
-  def close(): IO[Unit]
-
 object ObjectRepository:
 
   val chunkSize = 4096
 
   case class GetResponse(properties: GetObjectResponse, body: Stream[IO, Byte])
 
-  def resource(region: Region) = Resource.make(
-    IO(S3Client.builder().region(region).build()).map(c =>
-      new ObjectRepository:
-        override def getObject(request: GetObjectRequest) =
-          IO(c.getObject(request))
-            .map(r =>
-              GetResponse(
-                r.response(),
-                fs2.io.readInputStream(IO.pure(r), chunkSize, true)
-              )
-            )
-            .map(Right.apply)
-            .handleErrorWith {
-              case e: S3Exception => IO.pure(Left(e))
-              case e              => IO.raiseError(e)
-            }
+  type GetObject = GetObjectRequest => IO[Either[S3Exception, GetResponse]]
 
-        override def close(): IO[Unit] = IO(c.close())
+  def resource(region: Region): Resource[IO, GetObject] = Resource {
+    def response(r: ResponseInputStream[GetObjectResponse]) = GetResponse(
+      r.response(),
+      fs2.io.readInputStream(IO.pure(r), chunkSize, true)
     )
-  )(_.close())
+    def errorHandler(e: Throwable) = e match {
+      case e: S3Exception => IO.pure(e)
+      case e              => IO.raiseError(e)
+    }
+    for client <- IO(S3Client.builder().region(region).build())
+    yield (
+      (request) =>
+        IO(client.getObject(request))
+          .map(r => Right(response(r)))
+          .handleErrorWith(e => errorHandler(e).map(Left.apply)),
+      IO(client.close())
+    )
+  }
