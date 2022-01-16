@@ -17,6 +17,7 @@ import software.amazon.awssdk.services.s3.model.{
   S3Exception
 }
 import fs2.Stream
+import nl.sanderdijkhuis.docs.ObjectRepository.OkResponse
 import org.http4s.*
 import org.http4s.syntax.all.*
 import org.http4s.util.CaseInsensitiveString
@@ -51,6 +52,7 @@ class MainSuite extends CatsEffectSuite {
     ObjectRepository.resource(Region.EU_CENTRAL_1).use { getObject =>
       for
         r <- EitherT(getObject(request)).valueOrF(IO.raiseError)
+        r <- IO(r.asInstanceOf[OkResponse])
         b <- r.body.compile.to(Array)
         s <- IO(new String(b, StandardCharsets.UTF_8))
       yield

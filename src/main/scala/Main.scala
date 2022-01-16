@@ -3,7 +3,11 @@ package nl.sanderdijkhuis.docs
 import fs2.Stream
 import cats.data.EitherT
 import cats.effect.{IO, IOApp}
-import nl.sanderdijkhuis.docs.ObjectRepository.GetObject
+import nl.sanderdijkhuis.docs.ObjectRepository.{
+  GetObject,
+  NotModifiedResponse,
+  OkResponse
+}
 import org.http4s.{HttpRoutes, MediaType, Response, Status}
 import org.http4s.blaze.server.BlazeServerBuilder
 import org.http4s.dsl.io.*
@@ -11,9 +15,10 @@ import org.http4s.*
 import org.http4s.server.Router
 import org.http4s.headers.*
 import org.http4s.headers.Location
+import org.http4s.server.middleware.GZip
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
-import org.http4s.syntax.all._
+import org.http4s.syntax.all.*
 
 import java.nio.charset.StandardCharsets
 import scala.concurrent.ExecutionContext.global
@@ -42,17 +47,25 @@ object Main extends IOApp.Simple:
               .build()
           )
         ).valueOrF(IO.raiseError)
-        cty <- header(`Content-Type`.parse(r.properties.contentType()))
-        cl <- header(`Content-Length`.fromLong(r.properties.contentLength()))
-        etag <- header(ETag.parse(r.properties.eTag()))
-      yield Response(
-        Status.Ok,
-        body = r.body,
-        headers = Headers(cty, cl, etag)
-      )
+        response <- r match {
+          case OkResponse(properties, body) =>
+            for
+              cty <- header(`Content-Type`.parse(properties.contentType()))
+              cl <- header(
+                `Content-Length`.fromLong(properties.contentLength())
+              )
+              etag <- header(ETag.parse(properties.eTag()))
+            yield Response(
+              Status.Ok,
+              body = body,
+              headers = Headers(cty, cl, etag)
+            )
+          case NotModifiedResponse => IO.pure(Response(Status.NotModified))
+        }
+      yield response
   }
   private def httpApp(getObject: GetObject): HttpApp[IO] = Router(
-    "/" -> reverseProxyService(getObject)
+    "/" -> GZip(reverseProxyService(getObject))
   ).orNotFound
   private def server(app: HttpApp[IO]) = BlazeServerBuilder[IO](global)
     .bindHttp(port, "localhost")
