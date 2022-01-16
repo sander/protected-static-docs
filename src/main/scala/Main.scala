@@ -20,8 +20,8 @@ import scala.concurrent.ExecutionContext.global
 
 object Main extends IOApp.Simple:
   val port = 8080
-  private val entryPoint = uri"/index.html"
-  private def helloWorldService(getObject: GetObject) = HttpRoutes.of[IO] {
+  val entryPoint = uri"/index.html"
+  def reverseProxyService(getObject: GetObject) = HttpRoutes.of[IO] {
     case GET -> Root => Found().map(_.putHeaders(Location(entryPoint)))
     case GET -> path =>
       for
@@ -37,7 +37,7 @@ object Main extends IOApp.Simple:
       yield Response(Status.Ok, body = response.body)
   }
   private def httpApp(getObject: GetObject): HttpApp[IO] = Router(
-    "/" -> helloWorldService(getObject)
+    "/" -> reverseProxyService(getObject)
   ).orNotFound
   private def server(app: HttpApp[IO]) = BlazeServerBuilder[IO](global)
     .bindHttp(port, "localhost")
