@@ -3,43 +3,45 @@ package nl.sanderdijkhuis.docs
 import fs2.Stream
 import cats.data.EitherT
 import cats.effect.{IO, IOApp}
-import org.http4s.HttpRoutes
+import nl.sanderdijkhuis.docs.ObjectRepository.GetObject
+import org.http4s.{HttpRoutes, MediaType, Response, Status}
 import org.http4s.blaze.server.BlazeServerBuilder
 import org.http4s.dsl.io.*
+import org.http4s.*
 import org.http4s.server.Router
 import org.http4s.headers.`Content-Type`
-
-import org.http4s.MediaType
+import org.http4s.headers.Location
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
+import org.http4s.syntax.all._
 
 import java.nio.charset.StandardCharsets
 import scala.concurrent.ExecutionContext.global
 
 object Main extends IOApp.Simple:
   val port = 8080
-  private val helloWorldService = HttpRoutes.of[IO] {
-    case GET -> Root => Ok(s"Hello, world!")
-    case GET -> Root / "test" => {
-
-      val request = GetObjectRequest
-        .builder()
-        .bucket("test-static-docs")
-        .key("index.html")
-        .build()
-
-      val getObjectResource = ObjectRepository.resource(Region.EU_CENTRAL_1)
-      val s = for
-        get <- Stream.resource(getObjectResource)
-        response <- Stream.eval(EitherT(get(request)).valueOrF(IO.raiseError))
-        b <- response.body
-      yield b
-
-      Ok(s, `Content-Type`(MediaType.unsafeParse("text/html")))
-    }
+  private val entryPoint = uri"/index.html"
+  private def helloWorldService(getObject: GetObject) = HttpRoutes.of[IO] {
+    case GET -> Root => Found().map(_.putHeaders(Location(entryPoint)))
+    case GET -> path =>
+      for
+        response <- EitherT(
+          getObject(
+            GetObjectRequest
+              .builder()
+              .bucket("test-static-docs")
+              .key(path.segments.mkString("/"))
+              .build()
+          )
+        ).valueOrF(IO.raiseError)
+      yield Response(Status.Ok, body = response.body)
   }
-  private val httpApp = Router("/" -> helloWorldService).orNotFound
-  private val server = BlazeServerBuilder[IO](global)
+  private def httpApp(getObject: GetObject): HttpApp[IO] = Router(
+    "/" -> helloWorldService(getObject)
+  ).orNotFound
+  private def server(app: HttpApp[IO]) = BlazeServerBuilder[IO](global)
     .bindHttp(port, "localhost")
-    .withHttpApp(httpApp)
-  val run = server.serve.compile.drain
+    .withHttpApp(app)
+  val run = ObjectRepository.resource(Region.EU_CENTRAL_1).use { getObject =>
+    server(httpApp(getObject)).serve.compile.drain
+  }
