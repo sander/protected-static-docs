@@ -21,6 +21,7 @@ import scala.concurrent.ExecutionContext.global
 object Main extends IOApp.Simple:
   val port = 8080
   val entryPoint = uri"/index.html"
+  case object ContentTypeError extends Exception("could not parse content type")
   def reverseProxyService(getObject: GetObject) = HttpRoutes.of[IO] {
     case GET -> Root => Found().map(_.putHeaders(Location(entryPoint)))
     case GET -> path =>
@@ -34,7 +35,16 @@ object Main extends IOApp.Simple:
               .build()
           )
         ).valueOrF(IO.raiseError)
-      yield Response(Status.Ok, body = response.body)
+        cty <- IO(
+          `Content-Type`
+            .parse(response.properties.contentType())
+            .getOrElse(throw ContentTypeError)
+        )
+      yield Response(
+        Status.Ok,
+        body = response.body,
+        headers = Headers(cty)
+      )
   }
   private def httpApp(getObject: GetObject): HttpApp[IO] = Router(
     "/" -> reverseProxyService(getObject)

@@ -84,13 +84,14 @@ class MainSuite extends CatsEffectSuite {
           .getOrElseF(IO.raiseError(new Exception("no response")))
         b <- r.body.compile.to(Array)
         s <- IO(new String(b, StandardCharsets.UTF_8))
-      yield assertNotEquals(s.indexOf("hello world"), -1)
-//        assertEquals(
-//          r.headers.get[`Content-Type`],
-//          Some(
-//            `Content-Type`(MediaType.unsafeParse("text/html"), None)
-//          )
-//        )
+      yield
+        assertNotEquals(s.indexOf("hello world"), -1)
+        assertEquals(
+          r.headers.get[`Content-Type`],
+          Some(
+            `Content-Type`(MediaType.unsafeParse("text/html"), None)
+          )
+        )
     }
   }
 }
